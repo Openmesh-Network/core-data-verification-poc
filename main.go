@@ -9,59 +9,19 @@ import (
 	"net/http"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 )
 
 // SETTINGS
 var ADDRESS = "localhost:6969"
-var USE_TLS = false
+var USE_TLS = true
 var MIN_RAND_LATENCY_MS = 0
 var MAX_RAND_LATENCY_MS = 0
-var EVENT_COOLDOWN = 10 // waiting time between events in ms, keep low
-var EVENT_ODDS = .1     // odds an event happens every EVENT_COOLDOWN (1.0 = 100%, .5 = 50%, etc)
-
-type LiveSource struct {
-	Name string
-	Id   uint64
-
-	// method for getting source (for now just GET)
-	Url string
-}
-
-type HistoricSource struct {
-	Name string
-	Id   uint64
-
-	// Content ID for seeding
-	Cid [32]byte
-}
-
-type Block struct {
-	// "header"
-	HashPrev [32]byte
-
-	// "body"
-
-	// NOTE(Tom): Hey Harsh add the attestation data here, not sure how big it needs to be
-	// estimating like 64bytes + 72 byte signature or something like that
-	// I'll reserve some space for it here though
-	Attestations [][256]byte
-
-	Sources []struct {
-		Id     uint64 // source ID
-		Chunks []struct {
-			Hash      [32]byte
-			Signature [72]byte // maximum length of an ecdsa signature
-		}
-	}
-
-	// not PoW so no nonce required, could include hash of signed block though?
-	// nonce goes up by 1 every block
-	nonce uint64
-}
-
-// need a list of fake historic sources...
-// banance, codbase,
+var EVENT_COOLDOWN = 10           // waiting time between events in ms, keep low
+var EVENT_ODDS = .1               // odds an event happens every EVENT_COOLDOWN (1.0 = 100%, .5 = 50%, etc)
+var BLOCK_MINE_TIME = 1           // time in seconds in between blocks
+var BLOCK_TIME_RANDOM_FACTOR = .5 // randomizes the block lengths, it's (float between 0-1) X this factor in seconds
 
 type NetworkState struct {
 	Blockchain      []Block
@@ -72,6 +32,7 @@ type NetworkState struct {
 		Timestamp time.Time
 		Event     string
 	}
+	lock sync.Mutex
 }
 
 func addLiveSource(ns *NetworkState, name string) {
@@ -84,29 +45,7 @@ func addLiveSource(ns *NetworkState, name string) {
 	ns.LiveSources = append(ns.LiveSources, newSource)
 }
 
-func jsonOrEmptyArray(v any) []byte {
-	j, err := json.Marshal(v)
-
-	if err != nil {
-		fmt.Printf("err: %v\n", err)
-		j = []byte("[]")
-	}
-
-	return j
-}
-
-func jsonOrEmptyObject(v any) []byte {
-	j, err := json.Marshal(v)
-
-	if err != nil {
-		j = []byte("{}")
-	}
-
-	return j
-}
-
 func main() {
-
 	var ns NetworkState
 
 	ns.MockLiveData = make(map[uint64][]struct {
@@ -116,12 +55,14 @@ func main() {
 
 	// register all HTTP endpoints
 
-	addLiveSource(&ns, "banance")
+	addLiveSource(&ns, "bananance")
 	addLiveSource(&ns, "codbase")
+	addLiveSource(&ns, "bybit")
+	addLiveSource(&ns, "dydx")
+	addLiveSource(&ns, "kraken")
+	addLiveSource(&ns, "bitfinex")
 
-	fmt.Println(ns)
-
-	// --- give data
+	// --- data for reading
 	http.HandleFunc("/getlivesources", func(w http.ResponseWriter, req *http.Request) {
 		s := jsonOrEmptyArray(ns.LiveSources)
 		w.Write(s)
@@ -158,11 +99,6 @@ func main() {
 	})
 
 	http.HandleFunc("/getdata/", func(w http.ResponseWriter, req *http.Request) {
-		// randomize some data?
-		// might have to track how much data every node in pipe has?
-		// gosh darn it!!
-		// give out data with timestamps???
-
 		liveSourceName := strings.Split(req.URL.Path, "/")[2]
 
 		// find live source name in list of sources
@@ -196,6 +132,53 @@ func main() {
 
 	// --- read data
 
+	// TODO: Should work, but it's UNTESTED!!!
+	http.HandleFunc("/submitchunk", func(w http.ResponseWriter, req *http.Request) {
+		if req.Method == "POST" {
+			req.ParseForm()
+			var submission ChunkSubmission
+			err := json.NewDecoder(req.Body).Decode(&submission)
+
+			if err != nil {
+				fmt.Fprintln(w, "Has to be formatted as ChunkSubmission struct in go file, here's the parsin error if you need it.", err.Error())
+			}
+
+			// TODO: add sanity checks (but for now we assume that all nodes are benevolent 😇)
+
+			found := false
+			index := 0
+			for i := 0; i < len(ns.PendingBlock.Sources); i++ {
+				if ns.PendingBlock.Sources[i].Id == submission.Sid {
+					index = i
+					found = true
+				}
+			}
+
+			ns.lock.Lock()
+			defer ns.lock.Unlock()
+			if !found {
+				ns.PendingBlock.Sources = append(ns.PendingBlock.Sources, struct {
+					Id     uint64
+					Chunks []struct {
+						BytesProcessed uint16
+						Hash           [32]byte
+						Signature      [72]byte
+					}
+				}{Id: submission.Sid, Chunks: nil})
+				index = len(ns.PendingBlock.Sources)
+				// ns.PendingBlock.Sources[index].Chunks
+			}
+
+			ns.PendingBlock.Sources[index].Chunks = append(ns.PendingBlock.Sources[index].Chunks, struct {
+				BytesProcessed uint16
+				Hash           [32]byte
+				Signature      [72]byte
+			}{BytesProcessed: submission.BytesProcessed, Hash: submission.Hash, Signature: submission.Signature})
+		} else {
+			fmt.Fprintln(w, "Only POST is accepted")
+		}
+	})
+
 	http.HandleFunc("/attest", func(w http.ResponseWriter, req *http.Request) {
 		if req.Method == "POST" {
 			req.ParseForm()
@@ -207,6 +190,8 @@ func main() {
 				fmt.Fprintln(w, "Error reading attestation, server got", n, "bytes")
 				return
 			} else {
+				ns.lock.Lock()
+				defer ns.lock.Unlock()
 				ns.PendingBlock.Attestations = append(ns.PendingBlock.Attestations, buf)
 			}
 		} else {
@@ -283,8 +268,7 @@ func main() {
 	// loop to """"MINE"""" blocks
 	go func() {
 		for {
-
-			delay := 1 + (rand.Float32()*2 - 1)
+			delay := BLOCK_MINE_TIME + (rand.Float32()*2-1)*BLOCK_TIME_RANDOM_FACTOR
 			time.Sleep(time.Duration(delay) * time.Second)
 
 			// ns.PendingBlock.HashPrev[0] = 0xde
@@ -292,6 +276,8 @@ func main() {
 			// ns.PendingBlock.HashPrev[2] = 0xbe
 			// ns.PendingBlock.HashPrev[3] = 0xef
 
+			ns.lock.Lock()
+			ns.PendingBlock.Time = uint64(time.Now().Unix())
 			ns.Blockchain = append(ns.Blockchain, ns.PendingBlock)
 			fmt.Println("Block \"\"\"mined\"\"\"")
 
@@ -310,8 +296,9 @@ func main() {
 				for i := 0; i < 32; i++ {
 					ns.PendingBlock.HashPrev[i] = res[i]
 				}
-				ns.PendingBlock.nonce = rand.Uint64()
+				ns.PendingBlock.Nonce = rand.Uint64()
 			}
+			ns.lock.Unlock()
 		}
 	}()
 
