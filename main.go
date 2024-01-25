@@ -14,14 +14,17 @@ import (
 )
 
 // SETTINGS
-var ADDRESS = "localhost:6969"
-var USE_TLS = true
+var PORT = "6962"
+var ADDRESS = "localhost:" + PORT
+var USE_TLS = false
+var PRINT_MOCK_EVENTS = false
+var PRINT_BLOCK_MINED = true
 var MIN_RAND_LATENCY_MS = 0
 var MAX_RAND_LATENCY_MS = 0
 var EVENT_COOLDOWN = 10           // waiting time between events in ms, keep low
 var EVENT_ODDS = .1               // odds an event happens every EVENT_COOLDOWN (1.0 = 100%, .5 = 50%, etc)
-var BLOCK_MINE_TIME = 1           // time in seconds in between blocks
-var BLOCK_TIME_RANDOM_FACTOR = .5 // randomizes the block lengths, it's (float between 0-1) X this factor in seconds
+var BLOCK_MINE_TIME = 8           // time in seconds in between blocks
+var BLOCK_TIME_RANDOM_FACTOR = .1 // randomizes the block lengths, it's (float between 0-1) X this factor in seconds
 
 type NetworkState struct {
 	Blockchain      []Block
@@ -199,7 +202,7 @@ func main() {
 		}
 	})
 
-	fmt.Println("Started listening on port 6969...")
+	fmt.Println("Started listening on port", PORT)
 
 	// loop to add mock data
 	go func() {
@@ -250,7 +253,9 @@ func main() {
 						event += " "
 						event += coins[rand.Intn(len(coins))]
 
-						fmt.Println(event)
+						if PRINT_MOCK_EVENTS {
+							fmt.Println(event)
+						}
 
 						// only looks complicated bc I used anonymous struct earlier, this just adds a timestamp + event name to an array
 						ns.MockLiveData[id] = append(ns.MockLiveData[id], struct {
@@ -268,34 +273,34 @@ func main() {
 	// loop to """"MINE"""" blocks
 	go func() {
 		for {
-			delay := BLOCK_MINE_TIME + (rand.Float32()*2-1)*BLOCK_TIME_RANDOM_FACTOR
+			delay := float32(BLOCK_MINE_TIME) + (rand.Float32()*2-1)*float32(BLOCK_TIME_RANDOM_FACTOR)
 			time.Sleep(time.Duration(delay) * time.Second)
-
-			// ns.PendingBlock.HashPrev[0] = 0xde
-			// ns.PendingBlock.HashPrev[1] = 0xad
-			// ns.PendingBlock.HashPrev[2] = 0xbe
-			// ns.PendingBlock.HashPrev[3] = 0xef
 
 			ns.lock.Lock()
 			ns.PendingBlock.Time = uint64(time.Now().Unix())
 			ns.Blockchain = append(ns.Blockchain, ns.PendingBlock)
-			fmt.Println("Block \"\"\"mined\"\"\"")
+
+			if PRINT_BLOCK_MINED {
+				fmt.Println("Block \"\"\"mined\"\"\"")
+			}
 
 			// Set up next block
 			{
 				ns.PendingBlock = Block{}
 
-				hash := sha256.New()
-				enc := gob.NewEncoder(hash)
-				err := enc.Encode(ns.Blockchain[:len(ns.Blockchain)-1])
-				if err != nil {
-					fmt.Printf("err: %v\n", err)
+				{ // turns the header to a hash
+					hash := sha256.New()
+					enc := gob.NewEncoder(hash)
+					err := enc.Encode(ns.Blockchain[:len(ns.Blockchain)-1])
+					if err != nil {
+						fmt.Printf("err: %v\n", err)
+					}
+					res := hash.Sum(nil)
+					for i := 0; i < 32; i++ {
+						ns.PendingBlock.HashPrev[i] = res[i]
+					}
 				}
 
-				res := hash.Sum(nil)
-				for i := 0; i < 32; i++ {
-					ns.PendingBlock.HashPrev[i] = res[i]
-				}
 				ns.PendingBlock.Nonce = rand.Uint64()
 			}
 			ns.lock.Unlock()
