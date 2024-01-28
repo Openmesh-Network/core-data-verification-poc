@@ -124,7 +124,7 @@ func main() {
 					// }
 					fmt.Println("Stream is length: ", len(stream))
 					for i = i; i < len(stream); i++ {
-						w.Write(jsonOrEmptyObject(stream))
+						w.Write(jsonOrEmptyObject(stream[i]))
 					}
 				}
 			}
