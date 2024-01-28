@@ -123,9 +123,7 @@ func main() {
 					//		"event": "Richard -> boshy 100 BTC"
 					// }
 					fmt.Println("Stream is length: ", len(stream))
-					for i = i; i < len(stream); i++ {
-						w.Write(jsonOrEmptyObject(stream[i]))
-					}
+					w.Write(jsonOrEmptyObject(stream[i:len(stream)]))
 				}
 			}
 		}
