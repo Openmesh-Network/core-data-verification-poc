@@ -17,15 +17,17 @@ It basically emulates the distributed part of the network and the concensus mech
 - `frontend` all the react js code for displaying info
 - `node` the go program that will use SGX to validate source data
 
-%% ## How to run
-%% go run .
+<!--
+## How to run
+go run .
 
-%% ## Getting up to speed
-%% There is a central HTTP server which receives all the requests from the nodes and marshals them.
-%% This is meant to emulate blockchain consensus.
-%% Given we know all the .
+## Getting up to speed
+There is a central HTTP server which receives all the requests from the nodes and marshals them.
+This is meant to emulate blockchain consensus.
+Given we know all the .
 
-%% ### Central server
+### Central server
+!-->
 
 
 ### SGX
