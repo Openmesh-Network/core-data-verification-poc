@@ -27,7 +27,6 @@ This is meant to emulate blockchain consensus.
 Given we know all the .
 
 ### Central server
-!-->
 
 
 ### SGX
@@ -36,6 +35,7 @@ The constraint is that
 
 #### SGX in this project
 The validator
+!-->
 
 ## Future improvements
 - Stop using JSON, it adds a lot of complexity and is very inefficient space and bandwidth-wise
