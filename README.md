@@ -1,18 +1,41 @@
-# C&C Server for Decentralized Verification experiment
+# Data Verification Proof of Concept
 
-We wrote this server to experiment with some of the distributed concensus ideas without investing much time in implementing a blockchain or P2P architecture from scratch.
+A proof of concept mock-blockchain to experiment with SGX attestations for data verification.
+
+We wrote this to experiment with some of the distributed concensus ideas without investing much time in implementing a blockchain or P2P architecture from scratch.
 It basically emulates the distributed part of the network and the concensus mechanism. 
-It's more or less just a backdrop for us to experiment with SGX and different coordination/verification schemes.
+
+## Dependencies
+- Go
+- Npm (for frontend visualization)
+
+## Libraries
+- [EGo](https://www.edgeless.systems/products/ego/) for SGX attestations + verifications
+- React for visualization
+
+## Project Layout
+- `frontend` all the react js code for displaying info
+- `node` the go program that will use SGX to validate source data
+
+%% ## How to run
+%% go run .
+
+%% ## Getting up to speed
+%% There is a central HTTP server which receives all the requests from the nodes and marshals them.
+%% This is meant to emulate blockchain consensus.
+%% Given we know all the .
+
+%% ### Central server
+
+
+### SGX
+SGX or Software Guard Extensions, is a cpu-level security scheme that can more or less verify computation (meaning some specific set of instructions was run) through PKC.
+The constraint is that 
+
+#### SGX in this project
+The validator
 
 ## Future improvements
 - Stop using JSON, it adds a lot of complexity and is very inefficient space and bandwidth-wise
+    - Switch to protocolbuffer
 
-## Notes for Harsh:
-- types.go has all the relevant types you might care about
-- All the APIs return JSON, with no adjustment just the raw data. Pretty sure that calling json.Unmarshal with the bytes should give you the same values
-- TLS can be disabled if it's causing you problems it's in one of those environment variables
-- There are a bunch of settings variables at the top of the main file to tweak the cnc server
-- Many apologies, but the cleanest way to get this working was to serve the "live data" as a json array of objects with timestamps. This means you'll have to code the verifiers to discard any data they've already seen. I beg for your forgiveness
-    - Not sure if that's clear enough. Basically everytime you fetch data from '/getdata/bananance', you'll get the 10 latest transactions with timestamps no matter how times you call it.
-- I haven't tested the adding parts of the code since that would mean implementing a dummy client. Best of luck you're the best
-- Honestly the best docs is probably just reading the code. It's very straightforward. I just have 99% of the logic inside the APIs. Plus, there's 2 go threads: one for "mining" blocks, and the other for generating mock events
